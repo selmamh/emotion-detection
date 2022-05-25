@@ -7,11 +7,13 @@ from textblob import Word
 from sklearn.model_selection import train_test_split
 from sklearn.decomposition import TruncatedSVD
 
+
 from nltk.stem import PorterStemmer
 from nltk.corpus import stopwords
 import sklearn.metrics as mt
 from sklearn.model_selection import GridSearchCV
 from sklearn.feature_extraction.text import TfidfVectorizer
+from gensim.models import Word2Vec, KeyedVectors
 # nltk.download('stopwords')
 # nltk.download('wordnet')
 
@@ -61,16 +63,43 @@ def tfidf_vectorizer(df, column):
   words = tfv.get_feature_names()
   tfidf_df = pd.DataFrame(tfidf.toarray())
   tfidf_df.columns = words
-  return tfidf_df
+  return tfidf_df, tfv
 
   
 def TrunSVD(matrice):
   svd = TruncatedSVD(n_components=1000, n_iter=7, random_state=42)
   svd_df = svd.fit_transform(matrice)
-  return svd_df
+  return svd_df, svd
+
+def Word2vec(data):
+  texts =data.values
+  sentences = [nltk.word_tokenize(text) for text in texts]
+  model = Word2Vec(sentences, vector_size=50, window=5, min_count=1, workers=4)
+  return model
+
+def convert_to_vec(model,X_train ,X_test):
+  words = set(model.wv.index_to_key )
+  X_train_vect = np.array([np.array([model.wv[i] for i in ls if i in words])
+                         for ls in X_train])
+  X_test_vect = np.array([np.array([model.wv[i] for i in ls if i in words])
+                         for ls in X_test])
+  X_train_vect_avg = []
+  for v in X_train_vect:
+    if v.size:
+        X_train_vect_avg.append(v.mean(axis=0))
+    else:
+        X_train_vect_avg.append(np.zeros(100, dtype=float))
+        
+  X_test_vect_avg = []
+  for v in X_test_vect:
+    if v.size:
+        X_test_vect_avg.append(v.mean(axis=0))
+    else:
+        X_test_vect_avg.append(np.zeros(100, dtype=float))
+  return X_train_vect_avg,X_test_vect_avg
 
 def encoding_target(column):
-    column =column.map({'anger':0, 'disgust':1,'fear':2,'joy':2, "neutral":3,"sadness":4})
+    column =column.map({'anger':0, 'disgust':1,'fear':2,'joy':3, "neutral":4,"sadness":5})
     return column
 
 

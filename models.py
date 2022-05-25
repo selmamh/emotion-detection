@@ -22,7 +22,7 @@ def randomForest_model(X_train,y_train,X_test):
     y_pre_rf = rf.predict(X_test)
     return y_pre_rf
 
-def linearRegression_model(X_train,y_train,X_test):
+def logisticRegression_model(X_train,y_train,X_test):
     clf = LogisticRegression()
     clf.fit(X_train, y_train)
     y_pre_lr = clf.predict(X_test)

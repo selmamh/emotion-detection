@@ -1,15 +1,18 @@
 
+from time import time
 from nltk.corpus import stopwords
 from nltk.corpus import stopwords
 import warnings
 from sklearn import svm
-
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
+import numpy as np
 warnings.filterwarnings("ignore")
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 # nltk.download('stopwords')
 # nltk.download('wordnet')
-from preprocessing import load_data, clean_text, drop_value_from_target, encoding_target, tfidf_vectorizer,TrunSVD,split_data
+from preprocessing import Word2vec, convert_to_vec, load_data, clean_text, drop_value_from_target, encoding_target, tfidf_vectorizer,TrunSVD,split_data
 from models import *
 
 
@@ -26,42 +29,74 @@ df = drop_value_from_target(df, "surprise")
 df["target"] = encoding_target(df["emotion"])
 
 #tfidf vectorizer
-tfidf = tfidf_vectorizer(df,"essay_clean")
+tfidf, tfv = tfidf_vectorizer(df,"essay_clean")
 
 #truncated SVD
-truncSVD = TrunSVD(tfidf)
+truncSVD, svd = TrunSVD(tfidf)
 
-#split the data
-X_train, X_test, y_train, y_test = split_data(truncSVD,df["target"],test_size = 0.2)
+#train the word2vec model
+model = Word2vec(df["essay_clean"])
 
+
+#split the data original text
+X_train, X_test, y_train, y_test = split_data(df["essay_clean"],df["target"],test_size = 0.2)
+
+#convert train and test data to vectors
+X_train_vect_avg,X_test_vect_avg = convert_to_vec(model, X_train, X_test)
 
 #params for random forest
-param_grid_rf = {'n_estimators': [100, 300, 500, 800, 1200], 'max_depth':[5, 8, 15, 25],'min_samples_split': 
-    [ 10, 15, 100],'min_samples_leaf': [ 5, 10] }
+# param_grid_rf = {'n_estimators': [100, 300, 500, 800, 1200], 'max_depth':[5, 8, 15, 25],'min_samples_split': 
+#     [ 10, 15, 100],'min_samples_leaf': [ 5, 10] }
 
-# #applying logistic regression
-# y_pre_lr =  logisticRegression_model(X_train,y_train,X_test)
-# print("Reports from Linear regession model: ")
-# print_report(y_pre_lr, y_test)
+# params for LinearSVC
+# param_grid_svc = {'C': [0.1,1, 10, 100], 'gamma': [1,0.1,0.01,0.001],'kernel': ['rbf', 'poly', 'sigmoid']}
 
-# #applying random forest
-# print("****************************************************************************")
-# y_pre_lr =  randomForest_model(X_train,y_train,X_test)
-# print("Reports from random forest model: ")
-# print_report(y_pre_lr, y_test)
 
-# #applying Linear SVC
-# print("****************************************************************************")
-# y_pre_lr =  linearSvc_model(X_train,y_train,X_test)
-# print("Reports from Linear SVC model: ")
-# print_report(y_pre_lr, y_test)
+svc= svm.SVC()
+rf = RandomForestClassifier()
+lr = LogisticRegression()
 
-#params for LinearSVC
-param_grid_svc = {'C': [0.1,1, 10, 100], 'gamma': [1,0.1,0.01,0.001],'kernel': ['rbf', 'poly', 'sigmoid']}
 
-#Grid search for linear SVC
-grid_SVC = gridSearch(svm.SVC(), param_grid_svc, X_train,y_train)
-y_grid_pred = grid_SVC.predict(X_test)
-print_report(y_grid_pred, y_test)
-print("best params for linear svc = ",grid_SVC.best_estimator_)
+pipeline = Pipeline(
+    [
+        ("tfidf", tfv),
+        ("svd", svd),
+        ("svc", svc),
+    ]
+)
+parameters = {
+    "tfidf__max_df": (0.5, 0.75, 1.0),
+    "tfidf__ngram_range": ((1, 1), (1, 2),(1,3),(1,4)),  
+    "svd__n_components": [400,500,600], 
 
+    "svc__C" : [0.1,1, 10, 100],
+    "svc__gamma":[1,0.1,0.01,0.001],
+    "svc__kernel": ['rbf', 'poly', 'sigmoid',"linear"],
+
+    # "rf__n_estimators": [100, 300, 500, 800, 1200], 
+    # "rf__max_depth":[5, 8, 15, 25],
+    # "rf__min_samples_split": [ 10, 15, 100],
+    # "rf__min_samples_leaf": [ 5, 10] ,
+
+    # 'lr__penalty' : ['l1', 'l2'],
+    # 'lr__C' : np.logspace(-4, 4, 20),
+    # 'lr__solver' : ['liblinear'],
+ 
+}
+
+grid_search = GridSearchCV(pipeline, parameters, n_jobs=-1, verbose=1)
+
+print("Performing grid search...")
+print("pipeline:", [name for name, _ in pipeline.steps])
+print("parameters:")
+print(parameters)
+t0 = time()
+grid_search.fit(X_train, y_train)
+print("done in %0.3fs" % (time() - t0))
+print()
+
+print("Best score: %0.3f" % grid_search.best_score_)
+print("Best parameters set:")
+best_parameters = grid_search.best_estimator_.get_params()
+for param_name in sorted(parameters.keys()):
+    print("\t%s: %r" % (param_name, best_parameters[param_name]))
